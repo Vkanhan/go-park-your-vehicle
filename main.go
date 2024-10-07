@@ -36,15 +36,13 @@ func newParkingLot(small, medium, large int) *ParkingLot {
     }
 
     // Initialize parking spots
-    for i := 0; i < small; i++ {
+    for i := range p.smallspot {
         p.smallspot[i] = ParkingSpot{size: "small", occupied: false}
     }
-
-    for i := 0; i < medium; i++ {
+    for i := range p.mediumspot {
         p.mediumspot[i] = ParkingSpot{size: "medium", occupied: false}
     }
-
-    for i := 0; i < large; i++ {
+    for i := range p.largespot {
         p.largespot[i] = ParkingSpot{size: "large", occupied: false}
     }
 
@@ -53,11 +51,25 @@ func newParkingLot(small, medium, large int) *ParkingLot {
 
 // parkVehicle parks a vehicle and returns a ticket ID or an error
 func (p *ParkingLot) parkVehicle(v Vehicle) (int, string, error) {
+    spotIndex, spotType, err := p.findAvailableSpot(v.size)
+    if err != nil {
+        return -1, "", err
+    }
+
+    p.occupySpot(spotType, spotIndex)
+    p.ticketID++
+    p.tickets[p.ticketID] = v
+
+    return p.ticketID, spotType, nil
+}
+
+// findAvailableSpot finds an available parking spot based on vehicle size
+func (p *ParkingLot) findAvailableSpot(vehicleSize string) (int, string, error) {
     var spotIndex int
     var err error
     var spotType string
 
-    switch v.size {
+    switch vehicleSize {
     case "small":
         spotIndex, err = p.findSpot(p.smallspot)
         spotType = "small"
@@ -87,29 +99,19 @@ func (p *ParkingLot) parkVehicle(v Vehicle) (int, string, error) {
         return -1, "", errors.New("no parking spot available for the vehicle")
     }
 
-    switch spotType {
-    case "small":
-        p.smallspot[spotIndex].occupied = true
-    case "medium":
-        p.mediumspot[spotIndex].occupied = true
-    case "large":
-        p.largespot[spotIndex].occupied = true
-    }
-
-    p.ticketID++
-    p.tickets[p.ticketID] = v
-
-    return p.ticketID, spotType, nil
+    return spotIndex, spotType, nil
 }
 
-// findSpot finds an available parking spot in the provided slice
-func (p *ParkingLot) findSpot(spots []ParkingSpot) (int, error) {
-    for i, spot := range spots {
-        if !spot.occupied {
-            return i, nil
-        }
+// occupySpot marks the spot as occupied
+func (p *ParkingLot) occupySpot(spotType string, index int) {
+    switch spotType {
+    case "small":
+        p.smallspot[index].occupied = true
+    case "medium":
+        p.mediumspot[index].occupied = true
+    case "large":
+        p.largespot[index].occupied = true
     }
-    return -1, errors.New("no available spots")
 }
 
 // retrieveVehicle retrieves a vehicle using its ticket and frees the spot
@@ -119,6 +121,18 @@ func (p *ParkingLot) retrieveVehicle(ticket int) (Vehicle, string, error) {
         return Vehicle{}, "", errors.New("invalid ticket")
     }
 
+    spotIndex, spotType, err := p.getSpotIndex(v)
+    if err != nil {
+        return Vehicle{}, "", err
+    }
+
+    p.freeSpot(spotType, spotIndex)
+    delete(p.tickets, ticket)
+    return v, spotType, nil
+}
+
+// getSpotIndex finds the index of the parking spot for the given vehicle
+func (p *ParkingLot) getSpotIndex(v Vehicle) (int, string, error) {
     var spotIndex int
     var err error
     var spotType string
@@ -146,24 +160,36 @@ func (p *ParkingLot) retrieveVehicle(ticket int) (Vehicle, string, error) {
         spotIndex, err = p.findSpotIndex(p.largespot, v)
         spotType = "large"
     default:
-        return Vehicle{}, "", errors.New("invalid vehicle size")
+        return -1, "", errors.New("invalid vehicle size")
     }
 
     if err != nil {
-        return Vehicle{}, "", errors.New("no spot found for vehicle")
+        return -1, "", errors.New("no spot found for vehicle")
     }
 
+    return spotIndex, spotType, nil
+}
+
+// freeSpot marks the spot as available
+func (p *ParkingLot) freeSpot(spotType string, index int) {
     switch spotType {
     case "small":
-        p.smallspot[spotIndex].occupied = false
+        p.smallspot[index].occupied = false
     case "medium":
-        p.mediumspot[spotIndex].occupied = false
+        p.mediumspot[index].occupied = false
     case "large":
-        p.largespot[spotIndex].occupied = false
+        p.largespot[index].occupied = false
     }
+}
 
-    delete(p.tickets, ticket)
-    return v, spotType, nil
+// findSpot finds an available parking spot in the provided slice
+func (p *ParkingLot) findSpot(spots []ParkingSpot) (int, error) {
+    for i, spot := range spots {
+        if !spot.occupied {
+            return i, nil
+        }
+    }
+    return -1, errors.New("no available spots")
 }
 
 // findSpotIndex finds the index of the parking spot for the given vehicle
@@ -178,32 +204,25 @@ func (p *ParkingLot) findSpotIndex(spots []ParkingSpot, v Vehicle) (int, error) 
 
 // displayParkingLotStatus shows the available spots in the parking lot
 func (p *ParkingLot) displayParkingLotStatus() {
-    smallAvailable := 0
-    mediumAvailable := 0
-    largeAvailable := 0
-
-    for _, spot := range p.smallspot {
-        if !spot.occupied {
-            smallAvailable++
-        }
-    }
-
-    for _, spot := range p.mediumspot {
-        if !spot.occupied {
-            mediumAvailable++
-        }
-    }
-
-    for _, spot := range p.largespot {
-        if !spot.occupied {
-            largeAvailable++
-        }
-    }
+    smallAvailable := p.countAvailableSpots(p.smallspot)
+    mediumAvailable := p.countAvailableSpots(p.mediumspot)
+    largeAvailable := p.countAvailableSpots(p.largespot)
 
     fmt.Println("Parking lot status:")
     fmt.Printf("Small spots available: %d\n", smallAvailable)
     fmt.Printf("Medium spots available: %d\n", mediumAvailable)
     fmt.Printf("Large spots available: %d\n", largeAvailable)
+}
+
+// countAvailableSpots counts the available parking spots
+func (p *ParkingLot) countAvailableSpots(spots []ParkingSpot) int {
+    count := 0
+    for _, spot := range spots {
+        if !spot.occupied {
+            count++
+        }
+    }
+    return count
 }
 
 func main() {
